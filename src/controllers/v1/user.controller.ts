@@ -1,6 +1,6 @@
 import { NextFunction, Request, Response } from "express";
 import AppError from "../../utils/appError.utils";
-import { createEmailAccount, getAccounts } from "../../services/user.service";
+import { createEmailAccount, getAccounts, getUserProfile } from "../../services/user.service";
 import { LinkAccountInput } from "./types";
 import { LinkAccountFactory } from "../../services/link-account/factory";
 
@@ -33,6 +33,21 @@ export const linkAccount = async (req:Request,res:Response,next:NextFunction)=>{
         error:false,
         message:"Email account created for the user"
        }); 
+    }catch(err){
+        next(err);
+    }
+}
+
+export const getProfile = async (req:Request,res:Response,next:NextFunction)=>{
+    try{
+        const userId = req.user?.id;
+        if(!userId) throw new AppError('invalid user',400);
+        const profile = await getUserProfile(userId);
+        return res.status(200).json({
+            error:false,
+            message:'profile fetched',
+            data:profile
+        });
     }catch(err){
         next(err);
     }

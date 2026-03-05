@@ -1,6 +1,7 @@
 import db from "../db"
 import AppError from "../utils/appError.utils";
 import { LinkAccountResponse } from "./link-account/types";
+import { UserProfileData } from "./types";
 
 export const getAccounts = async (userId:string)=> {
     try{
@@ -47,6 +48,25 @@ export const createEmailAccount = async (providerResponse:LinkAccountResponse,us
             });
             return true;
         });        
+    }catch(err){
+        throw err;
+    }
+}
+export const getUserProfile = async (userId:string):Promise<UserProfileData>=>{
+    try{
+        const profile = await db.user.findUnique({
+            where:{id:userId},
+            select:{
+                id:true,
+                name:true,
+                email:true,
+                phone:true,
+                isActive:true,
+                createdAt:true
+            }
+        });
+        if(!profile) throw new AppError('no profile found',404);
+        return profile;
     }catch(err){
         throw err;
     }
