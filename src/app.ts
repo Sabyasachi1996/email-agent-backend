@@ -11,6 +11,7 @@ import cors from 'cors';
 import AppError from './utils/appError.utils.js'
 import authRouter from './routes/v1/auth.route.js'
 import { reqContext } from './config/context.js'
+import userRouter from './routes/v1/user.route.js'
 export const app = express();
 app.use(cors({
     origin: '*', // For demo purposes, this allows any origin
@@ -58,7 +59,8 @@ app.use(cookieParser());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-app.use('/api/v1/auth',authRouter)
+app.use('/api/v1/auth',authRouter);
+app.use('/api/v1/user',userRouter);
 
 app.use((err:Error,req:Request,res:Response,next:NextFunction)=>{
     logger.error(err.message,{

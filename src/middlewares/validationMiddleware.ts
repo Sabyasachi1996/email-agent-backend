@@ -17,16 +17,16 @@ export const checkRouteValidity = (req: Request, res: Response, next: NextFuncti
                 });
             });           
         }
-        const messages: string[] = [];
-        validationErrors.array().forEach((err: any) => {  
-            messages.push(err.msg); 
-        });
+        // const messages: string[] = [];
+        // validationErrors.array().forEach((err: any) => {  
+        //     messages.push(err.msg); 
+        // });
         const response = {
             error: true,
             code: 'VALIDATION_ERROR',
-            message: messages.join(', ')  // Combine all messages into one string
+            message: validationErrors.array()[0].msg || 'validation failed'  //messages.join(', ')  // Combine all messages into one string
         };
-        return res.status(400).json(response);  
+        return res.status(422).json(response);  
     } else {
         next();
     }

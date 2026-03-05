@@ -25,7 +25,7 @@ export const verifyAccessToken = (token: string) => {
   try{
     return jwt.verify(token, env.JWT_SECRET) as AccessTokenPayload;
   }catch(err){
-    throw new AppError('invalid or expired token',401);
+    throw new AppError('Invalid or expired token',401);
   }  
 };
 
@@ -37,6 +37,6 @@ export const verifyRefreshToken = (token: string) => {
   try{
     return jwt.verify(token, env.JWT_REFRESH_SECRET) as RefreshTokenPayload;
   }catch(err){
-    throw new AppError('invalid or expired token',401);
+    throw new AppError('Invalid or expired token',401);
   }  
 };

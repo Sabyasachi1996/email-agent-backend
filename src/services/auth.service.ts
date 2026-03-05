@@ -4,7 +4,7 @@ import db from '../db/index.js';
 import { signAccessToken, signRefreshToken, verifyRefreshToken } from '../utils/jwt.utils.js';
 import env from '../config/env.js';
 import AppError from '../utils/appError.utils.js';
-import { NewCreatedUserWithAccount, UserCreateDataset } from '../interfaces/common.interface.js';
+import { NewCreatedUserWithAccount, UserCreateDataset } from '../custom_types/common.type.js';
 import { logger } from '../config/logger.js';
 /**
  * Hash refresh token for storage & comparison.
@@ -14,60 +14,60 @@ const hashToken = (token: string) => {
   return crypto.createHash('sha256').update(token).digest('hex');
 };
 export const isEmailOrPhoneUsed = async (email:string,phone:string|undefined):Promise<boolean> => {
-    logger.info('checking if the email or phone is used',{email,phone});
-    try{
-        let recordByEmail = null;
-        let recordByPhone = null;        
-        recordByEmail = await db.user.findFirst({where:{email}});       
-        if(recordByEmail){
-          logger.warn('email already used',{email,phone});
-          return true;
-        }
-        if(phone){
-            recordByPhone = await db.user.findFirst({where:{phone}});            
-            if(recordByPhone){
-              logger.warn('phone already used',{email,phone});
-              return true;
-            }
-        }
-        logger.info('phone and email is brand new to this system',{email,phone});       
-        return false;
-    }catch(err){
-        throw err;
+  logger.info('checking if the email or phone is used',{email,phone});
+  try{
+    let recordByEmail = null;
+    let recordByPhone = null;        
+    recordByEmail = await db.user.findFirst({where:{email}});       
+    if(recordByEmail){
+      logger.warn('email already used',{email,phone});
+      return true;
     }
+    if(phone){
+      recordByPhone = await db.user.findFirst({where:{phone}});            
+      if(recordByPhone){
+        logger.warn('phone already used',{email,phone});
+        return true;
+      }
+    }
+    logger.info('phone and email is brand new to this system',{email,phone});       
+    return false;
+  }catch(err){
+    throw err;
+  }
 }
 
 export const createUserAndAccount = async (name:string,email:string,phone:string|undefined,password:string):Promise<NewCreatedUserWithAccount>=>{
-    logger.info('creating user and its initial account',{email,phone});
-    try{
-        const hashedPassword = await bcrypt.hash(password,10);        
-        const newUserWithAccount = await db.user.create({
-            data:{
-            name,
-            email,
-            password:hashedPassword,
-            phone:phone ?? null,
-            emailAccounts:{
-                create:[
-                    {
-                        emailAddress:email
-                    }
-                ]
+  logger.info('creating user and its initial account',{email,phone});
+  try{
+    const hashedPassword = await bcrypt.hash(password,10);        
+    const newUserWithAccount = await db.user.create({
+      data:{
+        name,
+        email,
+        password:hashedPassword,
+        phone:phone ?? null,
+        emailAccounts:{
+          create:[
+            {
+              emailAddress:email
             }
-        },
-            select:{
-                id:true,
-                name:true,
-                email:true,
-                phone:true,
-                createdAt:true
-            }
-        });
-        logger.info('user and its initial account created',{email,phone});
-        return newUserWithAccount;
-    }catch(err){
-        throw err;
-    }
+          ]
+        }
+      },
+      select:{
+        id:true,
+        name:true,
+        email:true,
+        phone:true,
+        createdAt:true
+      }
+    });
+    logger.info('user and its initial account created',{email,phone});
+    return newUserWithAccount;
+  }catch(err){
+    throw err;
+  }
 }
 export const login = async (email: string, password: string) => {
   logger.info('logging in',{email});
@@ -86,18 +86,18 @@ export const login = async (email: string, password: string) => {
   ); 
   if (!user){
     logger.warn('user not found',{email});
-    throw new AppError('Invalid credentials',401);  
+    throw new AppError('User not found for the provided email',400);  
   } 
 
   const isMatch = await bcrypt.compare(password, user.password);
   if (!isMatch) {
     logger.warn('password mismatch',{email});
-    throw new AppError('Invalid credentials',401);
+    throw new AppError('Email or password did not match',400);
   } 
 
   if (!user.isActive){
     logger.warn('user is inactive',{email});
-    throw new AppError('User is inactive',401);
+    throw new AppError('User is inactive',400);
   } 
   const accessToken = signAccessToken({ userId: user.id,userEmail:user.email,userPhone:user.phone });
   const refreshToken = signRefreshToken({ userId: user.id,userEmail:user.email,userPhone:user.phone });
@@ -105,16 +105,16 @@ export const login = async (email: string, password: string) => {
   const expiresAt = new Date(Date.now() + parseDuration(env.JWT_REFRESH_EXPIRE_TIME || '7d'));
 
   // Upsert: remove existing tokens for same user + device? here we create a new record
- await db.refreshToken.create({
-        data:{
-            userId: user.id,
-            token: hashed,
-            expiresAt: expiresAt,
-            userAgent: '',
-            ipAddress: '',
-            isRevoked: false,
-        }
-    });
+  await db.refreshToken.create({
+    data:{
+      userId: user.id,
+      token: hashed,
+      expiresAt: expiresAt,
+      userAgent: '',
+      ipAddress: '',
+      isRevoked: false,
+    }
+  });
   logger.info('tokens issued',{email});      
   return {
     user: { id: user.id, name: user.name, email: user.email},
@@ -196,7 +196,7 @@ export const logout = async (rawRefreshToken: string) => {
     const tokenRow = await db.refreshToken.findFirst({ where: { token: hashed } });
     if (!tokenRow){
       logger.warn('invalid refresh token');
-      throw new AppError('Invalid refresh token',401);
+      throw new AppError('Invalid refresh token',400);
     } 
     await db.refreshToken.update({
       where:{id:tokenRow.id},
