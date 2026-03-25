@@ -54,3 +54,23 @@ export const registerValidationRules = [
     .matches(/[A-Z]/)
     .withMessage('Password must contain at least one uppercase letter').bail(),
 ];
+
+export const sendPassResetMailValidationRules = [
+  body('email')
+  .notEmpty().withMessage('email is required').bail()
+  .isEmail().withMessage('Please enter proper email').bail(),
+];
+export const resetPasswordValidationRules = [
+  body('token')
+  .notEmpty().withMessage('token is missing').bail(),
+  body('userId')
+  .notEmpty().withMessage('user ID is missing').bail()
+  .isUUID().withMessage('user ID must be a UUID').bail(),
+ body('newPassword')
+  .isLength({ min: 8 })
+  .withMessage('Password must be at least 8 characters long').bail()
+  .matches(/\d/)
+  .withMessage('Password must contain at least one number').bail()
+  .matches(/[A-Z]/)
+  .withMessage('Password must contain at least one uppercase letter').bail(),
+];

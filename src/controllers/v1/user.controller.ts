@@ -1,9 +1,12 @@
 import { NextFunction, Request, Response } from "express";
 import AppError from "../../utils/appError.utils";
-import { createEmailAccount, getAccounts, getUserProfile } from "../../services/user.service";
-import { LinkAccountInput } from "./types";
+import { changeProfileAIResponseTone, createCalendarAccFormEmailAcc, createCalendarAccount, createEmailAccount, fetchEmailAccount, fetchUserData, getAccounts, getCalendarAccounts, getUserProfile, toggleCalendarAccountState, toggleEmailAccountStatus, updateProfileAutomationStatus, updateUser } from "../../services/user.service";
+import { ChangeAIResponseToneInput, LinkAccountInput,LinkCalendarAccountInput, ToggleAutomationStatus, UpdateProfileInput } from "./types";
 import { LinkAccountFactory } from "../../services/link-account/factory";
+import { LinkCalendarAccountFactory } from "../../services/link-calendar-account/factory";
+import { isEmailUsed } from "../../services/auth.service";
 
+//to get all the email accounts for a logged in user
 export const getUserAccounts = async (req:Request,res:Response,next:NextFunction)=>{
     try{
         const userId = req.user?.id;
@@ -14,12 +17,11 @@ export const getUserAccounts = async (req:Request,res:Response,next:NextFunction
             message:'accounts fetched',
             data:accounts
         });
-    }catch(err){
-        //throwing error to the next middleware(global error handling middleware in this case)
+    }catch(err){       
         next(err);
     }
 }
-
+//to link an email account for a logged in user with different available provider options
 export const linkAccount = async (req:Request,res:Response,next:NextFunction)=>{
     try{
        const userId = req.user?.id;
@@ -37,7 +39,61 @@ export const linkAccount = async (req:Request,res:Response,next:NextFunction)=>{
         next(err);
     }
 }
-
+//to make an email account active or inactive
+export const toggleAccountStatus = async (req:Request,res:Response,next:NextFunction) => {
+    try{
+        const accountId = req.params.id as string;        
+        const updatedAccountStatus = await toggleEmailAccountStatus(accountId);
+        const message = updatedAccountStatus?"Email account activated":"Email account deactivated";
+        const error = false;
+        return res.status(200).json({error,message});   
+    }catch(err){
+        next(err);
+    }
+}
+//to get all the calendar accounts for the logged in user
+export const getUserCalendarAccounts = async (req:Request,res:Response,next:NextFunction)=>{
+    try{
+        const userId = req.user?.id;
+        if(!userId) throw new AppError('invalid user',401);
+        const accounts = await getCalendarAccounts(userId);
+        return res.status(200).json({
+            error:false,
+            message:'accounts fetched',
+            data:accounts
+        });
+    }catch(err){
+        //throwing error to the next middleware(global error handling middleware in this case)
+        next(err);
+    }
+}
+//to link a calendar account with different provider options and facility to add existing email account as a calendar account
+export const linkCalendarAccount = async (req:Request,res:Response,next:NextFunction)=>{
+    try{
+       const userId = req.user?.id;
+       if(!userId) throw new AppError('invalid user',400); 
+       const input = req.body as LinkCalendarAccountInput; 
+       //if adding an already exising email account as a calendar account
+       if(!input.is_new){
+            const emailAccountId = input.account_id;
+            if(!emailAccountId) throw new AppError('Invalid existing email account',400);
+            const existingEmailAccountData = await fetchEmailAccount(emailAccountId);
+            await createCalendarAccFormEmailAcc(existingEmailAccountData);
+        }else{
+            const providerName = input.provider.toLowerCase();
+            const provider =  LinkCalendarAccountFactory.getProvider(providerName);
+            const providerResponse = await provider.link(input);
+            await createCalendarAccount(providerResponse,userId);
+        }            
+       return res.status(200).json({
+        error:false,
+        message:"Calendar account created for the user"
+       }); 
+    }catch(err){
+        next(err);
+    }
+}
+//to get the profile details of a logged in user
 export const getProfile = async (req:Request,res:Response,next:NextFunction)=>{
     try{
         const userId = req.user?.id;
@@ -47,6 +103,140 @@ export const getProfile = async (req:Request,res:Response,next:NextFunction)=>{
             error:false,
             message:'profile fetched',
             data:profile
+        });
+    }catch(err){
+        next(err);
+    }
+}
+//to make a calendar account active or inactive
+export const toggleCalendarAccountStatus = async (req:Request,res:Response,next:NextFunction) => {
+    try{
+        const accountId = req.params.id as string;        
+        const updatedAccountStatus = await toggleCalendarAccountState(accountId);
+        const message = updatedAccountStatus?"Calendar account activated":"Calendar account deactivated";
+        const error = false;
+        return res.status(200).json({error,message});   
+    }catch(err){
+        next(err);
+    }
+}
+//get service statistics data for a logged in user TODO: right now it is dummy data, later, change it to actual data
+export const getServiceStats = async (req:Request,res:Response,next:NextFunction) => {
+    try{
+        //TODO:replace this with actual db call and actual dashboard stats data when the n8n flow is finalized
+        //TODO:also have to handle the filtration based on dates sent in query params
+        const serviceStats = [
+            {
+            'label': 'drafted',
+            'value': '2',
+            'iconKey': 'envelope'
+            },
+            {
+            'label': 'Forwarded',
+            'value': '1',
+            'iconKey': 'right_arrow'
+            },
+            {
+            'label': 'Schedule Meeting',
+            'value': '4',
+            'iconKey': 'clock'
+            },
+            {
+            'label': 'No Action',
+            'value': '3',
+            'iconKey': 'cancel'
+            },
+            {
+            'label': 'Others',
+            'value': '5',
+            'iconKey': 'others'
+            }
+        ]
+        return res.status(200).json({
+            error:false,
+            message:"data fetched",
+            data:serviceStats
+        });
+    }catch(err){
+        next(err);
+    }
+}
+//update a user's profile
+export const updateProfile = async (req:Request,res:Response,next:NextFunction) => {
+    try{
+        const input = req.body as UpdateProfileInput;
+        const userId = req.user?.id;
+        if(!userId) throw new AppError('invalid user',400);
+        const userData = await fetchUserData(userId);
+        if(userData.email !== input.email){
+            const emailIsUsed = await isEmailUsed(input.email);
+            if(emailIsUsed) throw new AppError('Email is already in use',409);
+        }
+        await updateUser(userId,input.name,input.email,input.phone);
+        return res.status(200).json({
+            error:false,
+            message:'User updated'
+        });
+    }catch(err){
+        next(err);
+    }
+}
+//fetch available response tones
+export const getAIResponseTones = async (req:Request,res:Response,next:NextFunction) => {
+    try{
+        const userId = req.user?.id;
+        if(!userId) throw new AppError('Invalid user',400);
+        const userData = await getUserProfile(userId);        
+        //TODO: have to make this dynamic using a proper table for tones
+        return res.status(200).json({
+            error:false,
+            message:'Available AI response tones fetched',
+            data:[
+                {
+                    label:"Professional",
+                    value:"PROFESSIONAL",
+                    isActive:userData.aiResponseTone === "PROFESSIONAL"?true:false
+                },
+                {
+                    label:"Casual",
+                    value:"CASUAL",
+                    isActive:userData.aiResponseTone === "CASUAL"?true:false
+                }
+            ]
+        });
+    }catch(err){
+        next(err);
+    }
+}
+//change AI response tone
+export const changeAIResponseTone = async (req:Request,res:Response,next:NextFunction) => {
+    try{
+        //TODO:have to put this available tone in a single place efficiently later , so that, changing at one place , changes at all places
+        const availableTones = ["CASUAL","PROFESSIONAL"];
+        const input = req.body as ChangeAIResponseToneInput;
+        const userId = req.user?.id;
+        if(!userId) throw new AppError("Invalid user",400);
+        if(!availableTones.includes(input.tone)) throw new AppError("Invalid tone",400);
+        const userData = await getUserProfile(userId);
+        if(userData.aiResponseTone === input.tone) throw new AppError("Response tone already set",409);
+        await changeProfileAIResponseTone(userId,input.tone);
+        return res.status(200).json({
+            error:false,
+            message:`AI response tone is set to ${input.tone}`
+        });
+    }catch(err){
+        next(err);
+    }
+}
+//toggle automation status for a profile
+export const toggleAutomationStatus = async (req:Request,res:Response,next:NextFunction) => {
+    try{
+        const userId = req.user?.id;
+        if(!userId) throw new AppError("Invalid user",400);        
+        const currentAutomationStatus = await updateProfileAutomationStatus(userId);
+        return res.status(200).json({
+            error:false,
+            message:currentAutomationStatus?"automation activated":"automation deactivated"
         });
     }catch(err){
         next(err);

@@ -6,13 +6,6 @@ export interface NewCreatedUserWithAccount {
     phone:string|null;
     createdAt:Date;
 }
-export interface RegisterDto {
-    name:string;
-    email:string;
-    phone?:string;
-    password:string;
-    retype_password:string;
-}
 export interface UserCreateDataset {
     name:string;
     email:string;

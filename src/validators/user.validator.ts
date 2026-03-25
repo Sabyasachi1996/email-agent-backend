@@ -21,3 +21,19 @@ export const linkAccountValidationRule = [
   body('smtp_port')
   .notEmpty().withMessage('SMTP host is required').bail(),      
 ];
+export const updateProfileValidationRules = [
+  body('name')
+    .isString()
+    .withMessage('name must be a string').bail()
+    .trim()
+    .isLength({ min: 2, max: 100 })
+    .withMessage('Name must be between 2 and 100 characters').bail(),    
+  body('email')
+    .notEmpty().withMessage('email is required').bail()
+    .isEmail().withMessage('Please provide a valid email address').bail()
+    .normalizeEmail({ gmail_remove_dots: false }),    
+  body('phone')
+    .optional({values:'falsy'})    
+    .matches(/^\+[1-9]\d{6,14}$/)
+    .withMessage('Please provide a valid E.164 phone number (e.g., +1234567890)').bail() 
+];

@@ -2,55 +2,122 @@ import http from 'http'
 import {app} from './app.js'
 import env from './config/env.js'
 import { logger } from './config/logger.js';
-import { testConnection } from './db/index.js';
-// import { sequelize, testConnection } from './db/index.js';
+import db, { checkDBConnectivity, pool } from './db/index.js';
+import { closeEmailSenderWorker, initEmailSenderWorker } from './jobs/workers/emailSenderWorker.js';
+import { checkMailerConnectivity, mailer } from './config/mailer.js';
+import {checkRedisConnectivity, initRedisConnection, quitRedisConnection} from './config/redis.js';
+import { closeEmailProcessorWorker, initEmailProcessorWorker } from './jobs/workers/emailProcessorWorker.js';
+import { initEmailSendingQueue } from './jobs/queues/emailSendingQueue.js';
+import { initEmailProcessingQueue } from './jobs/queues/emailProcessingQueue.js';
+import { initEmailProcessorSchedular } from './jobs/schedulers/emailProcessorScheduler.js';
+let SERVER:http.Server;
+const PORT = env.APP_PORT || 3003;
+//server starting function
+const startAPIServer = async ()=>{
+    try{        
+        //INIT THE BULLMQ INSTANCES
+        initEmailSendingQueue();        
+        //INIT THE BULLMQ WORKERS(ALWAYS AFTER CHECKING THE REDIS CONNECTIVITY)
+        initEmailProcessorWorker();
+        initEmailSenderWorker();
+        //SERVER INSTANCE CREATION AND STARTING
+        SERVER = http.createServer(app);
+        SERVER.listen(PORT,()=>{            
+            logger.info(`[SERVER START] The server has started and is listening to port ${PORT}`);
+        });        
+    }catch(err){
+        logger.error('error starting the server',err);        
+    }    
+}
+//server shutdown function
+async function gracefulShutdown(signal:string){
+    const timeoutID = setTimeout(() => {
+        logger.warn('[APPLICATION SHUTDOWN] forcing shutdown. Bye...');
+        process.exit(1);
+    }, 10000); // 10 seconds max     
+    try{                
+        //close BULLMQ workers
+        await Promise.all([
+            closeEmailSenderWorker(),
+            closeEmailProcessorWorker()
+        ]);                
+        logger.info('[BULLMQ WORKERS] closed');                
+        //close HTTP server
+        if(SERVER){
+            await new Promise((resolve,reject)=>{
+                SERVER.close((err)=>err?reject(err):resolve(true));
+            });
+            logger.info('[HTTP SERVER] closed');
+        }                     
+        //close PRISMA CLIENT AND UNDERLYING POSTGRES CONNECTION POOL
+        await Promise.allSettled([
+            db.$disconnect(),
+            pool.end()
+        ]);        
+        logger.info('[DB CONNECTION] closed');             
+        //close NODEMAILER SMTP CLIENT
+        mailer.close();
+        logger.info('[MAILER CONNECTION] closed');
+        //close REDIS CONNECTION
+        await quitRedisConnection();
+        logger.info('[REDIS CONNECTION] closed');
+        clearTimeout(timeoutID);
+        logger.info('[APPLICAION SHUTDOWN] Bye...');
+        process.exit(0);                     
+    }catch(err){
+        logger.error('[APPLICATION SHUTDOWN] error',{
+            message: (err instanceof Error)?err.message:null,
+            stack:(err instanceof Error)?err.stack:null
+        });                              
+    }      
+}
+
 //event handler if any uncaught exception occurs at global level
 process.on('uncaughtException',(err:Error)=>{
-    logger.error(`uncaught Exception has occurred while starting the server: ${err}`);
+    logger.error('[APPLICATION UNCAUGHT EXCEPTION] error',{
+        message:err instanceof Error?err.message:null,
+        stack:err instanceof Error?err.stack:null,        
+    });
+    process.exit(1);
 });
 //event handler if any unhandled rejection occurs at global level
 process.on('unhandledRejection',(reason:any)=>{
-    logger.error(`unhandled rejection has occurred: ${reason}`);
+    logger.error('[APPLICATION UNCAUGHT EXCEPTION] error',{reason});
+    process.exit(1);
 });
-//port definition
-const port = env.APP_PORT || 3003;
-//function to start the server
-const startServer = async ()=>{
+//event handlers for if any shutdown signal comes in the process ('SIGINT' and 'SIGTERM' these two are mainly shutdown signals)
+process.on('SIGINT',async ()=>await gracefulShutdown('SIGINT'));
+process.on('SIGTERM',async ()=>await gracefulShutdown('SIGTERM'));
+const startSchedulerProcess = () => {
+    initEmailProcessorSchedular();
+}
+const bootstrap = async () => {
     try{
-        //test the db connection
-        await testConnection();
-        logger.info('DB connected successfully!');
-        //server starting and listening to port
-        const server = http.createServer(app);
-        server.listen(port,()=>{
-            logger.info(`The server is listening to port ${port}`);
-        });
-        //event handlers for if any shutdown signal comes in the process ('SIGINT' and 'SIGTERM' these two are mainly shutdown signals)
-        process.on('SIGINT',()=>gracefulShutdown('SIGINT'));
-        process.on('SIGTERM',()=>gracefulShutdown('SIGTERM'));
-        //function for shutting down the server gracefully
-        async function gracefulShutdown(signal:string){
-            try{
-                logger.info(`signal ${signal} received for shutting down the server!`);
-                // await sequelize.close();
-                logger.info(`database connection closed successfully!`);
-                server.close(async()=>{
-                    logger.info(`server closed successfully! Bye Bye!`);
-                    process.exit(0);
-                });
-                setTimeout(() => {
-                    logger.warn('Forcing shutdown due to timeout!');
-                    process.exit(1);
-                }, 5000); // 5 seconds max           
-            }catch(error){
-                logger.error(`error shutting down the server: ${error}`);
-                process.exit(1);
-            }      
+        //DB CONNECTION CHECK
+        await checkDBConnectivity();        
+        //MAILER CONNECTION CHECK
+        await checkMailerConnectivity();        
+        //REDIS CONNECTION CHECK AND CONNECTION INIT
+        await checkRedisConnectivity();
+        initRedisConnection();
+        //EMAIL PROCESSING BULLMQ INSTANCE CREATION
+        initEmailProcessingQueue();
+        //DECIDE WHAT TO START BASED ON PROCESS TYPE(API or SCHEDULER)
+        if(env.PROCESS_TYPE === "API"){
+            await startAPIServer();
+        }else if(env.PROCESS_TYPE === "SCHEDULER"){ 
+            startSchedulerProcess();
+        }else{
+            throw new Error(`Unknown Process: ${env.PROCESS_TYPE}`);
         }
     }catch(err){
-        logger.error('error starting the server',err);
+        logger.error('[BOOTSTRAPING] error',{
+            stack: err instanceof Error? err.stack:null,
+            message: err instanceof Error? err.message:null
+        });
         process.exit(1);
     }    
 }
-//calling the startServer function
-startServer();
+
+//nodejs process bootstrapping
+bootstrap();

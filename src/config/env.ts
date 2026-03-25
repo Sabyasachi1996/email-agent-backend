@@ -15,7 +15,21 @@ const envSchema = z.object({
     JWT_REFRESH_EXPIRE_TIME:z.string().default("7d"),
     GOOGLE_CLIENT_ID:z.string().default(""),
     GOOGLE_CLIENT_SECRET:z.string().default(""),
-    GOOGLE_REDIRECT_URI:z.string().default("")
+    GOOGLE_REDIRECT_URI:z.string().default(""),
+    PASS_RESET_URL:z.string().default(""),
+    REDIS_HOST:z.string().default("127.0.0.1"),
+    REDIS_PORT:z.coerce.number().default(6379),
+    MAIL_SMTP_HOST:z.string().default('aranaxweb.com'),
+    MAIL_SMTP_PORT:z.coerce.number().default(465),
+    APP_MAIL:z.string().default(""),
+    APP_MAIL_PASSWORD:z.string().default(""),
+    MICROSOFT_CLIENT_ID:z.string().default(""),
+    MICROSOFT_CLIENT_SECRET:z.string().default(""),
+    MICROSOFT_OBJECT_ID:z.string().default(""),
+    MICROSOFT_TENANT_ID:z.string().default(""),
+    PROCESS_TYPE:z.string().default(""),
+    RAZORPAY_KEY:z.string().default(""),
+    RAZORPAY_SECRET:z.string().default("")
 });
 
 const env = envSchema.parse(process.env);

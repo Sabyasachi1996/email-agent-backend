@@ -12,9 +12,10 @@ import AppError from './utils/appError.utils.js'
 import authRouter from './routes/v1/auth.route.js'
 import { reqContext } from './config/context.js'
 import userRouter from './routes/v1/user.route.js'
+import financeRouter from './routes/v1/finance.route.js'
 export const app = express();
 app.use(cors({
-    origin: '*', // For demo purposes, this allows any origin
+    origin: 'http://localhost:5173', // For demo purposes, this allows any origin
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS']
 }));
@@ -61,6 +62,7 @@ app.use(express.urlencoded({ extended: true }));
 
 app.use('/api/v1/auth',authRouter);
 app.use('/api/v1/user',userRouter);
+app.use('/api/v1/finance',financeRouter);
 
 app.use((err:Error,req:Request,res:Response,next:NextFunction)=>{
     logger.error(err.message,{

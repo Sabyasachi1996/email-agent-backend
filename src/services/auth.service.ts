@@ -6,6 +6,7 @@ import env from '../config/env.js';
 import AppError from '../utils/appError.utils.js';
 import { NewCreatedUserWithAccount, UserCreateDataset } from '../custom_types/common.type.js';
 import { logger } from '../config/logger.js';
+import { IssuedPassResetTokenData, UserDataByEmail } from './types.js';
 /**
  * Hash refresh token for storage & comparison.
  * simple sha256 hex.
@@ -13,47 +14,31 @@ import { logger } from '../config/logger.js';
 const hashToken = (token: string) => {
   return crypto.createHash('sha256').update(token).digest('hex');
 };
-export const isEmailOrPhoneUsed = async (email:string,phone:string|undefined):Promise<boolean> => {
-  logger.info('checking if the email or phone is used',{email,phone});
-  try{
-    let recordByEmail = null;
-    let recordByPhone = null;        
-    recordByEmail = await db.user.findFirst({where:{email}});       
+export const isEmailUsed = async (email:string):Promise<boolean> => {
+  logger.info('checking if the email is used',{email});
+  try{          
+    const recordByEmail = await db.user.findFirst({where:{email}});       
     if(recordByEmail){
-      logger.warn('email already used',{email,phone});
+      logger.warn('email already used',{email});
       return true;
-    }
-    if(phone){
-      recordByPhone = await db.user.findFirst({where:{phone}});            
-      if(recordByPhone){
-        logger.warn('phone already used',{email,phone});
-        return true;
-      }
-    }
-    logger.info('phone and email is brand new to this system',{email,phone});       
+    }   
+    logger.info('email is brand new to this system',{email});       
     return false;
   }catch(err){
     throw err;
   }
 }
 
-export const createUserAndAccount = async (name:string,email:string,phone:string|undefined,password:string):Promise<NewCreatedUserWithAccount>=>{
-  logger.info('creating user and its initial account',{email,phone});
+export const createUser = async (name:string,email:string,phone:string|undefined,password:string):Promise<NewCreatedUserWithAccount>=>{
+  logger.info('creating user',{email,phone});
   try{
     const hashedPassword = await bcrypt.hash(password,10);        
-    const newUserWithAccount = await db.user.create({
+    const newUser = await db.user.create({
       data:{
         name,
         email,
         password:hashedPassword,
-        phone:phone ?? null,
-        emailAccounts:{
-          create:[
-            {
-              emailAddress:email
-            }
-          ]
-        }
+        phone:phone ?? null        
       },
       select:{
         id:true,
@@ -63,8 +48,8 @@ export const createUserAndAccount = async (name:string,email:string,phone:string
         createdAt:true
       }
     });
-    logger.info('user and its initial account created',{email,phone});
-    return newUserWithAccount;
+    logger.info('user created',{email,phone});
+    return newUser;
   }catch(err){
     throw err;
   }
@@ -209,6 +194,80 @@ export const logout = async (rawRefreshToken: string) => {
   }  
 };
 
+export const issuePassResetToken = async (userData:UserDataByEmail):Promise<IssuedPassResetTokenData> => {
+  try{
+    await db.passResetToken.deleteMany({
+      where:{userId:userData.id}
+    });
+    const rawToken = crypto.randomBytes(32).toString('hex');
+    const hashedToken = crypto.createHash('sha256').update(rawToken).digest('hex'); 
+    const newTokenData = await db.passResetToken.create({
+      data:{
+        userId:userData.id,
+        token:hashedToken,
+        expiresAt:  new Date(Date.now() + 15 * 60 * 1000)
+      },
+      select:{
+        id:true,
+        userId:true,
+        token:true,
+        expiresAt:true
+      }
+    });
+    return {
+      rawToken,
+      otherData:newTokenData
+    }
+  }catch(err){
+    throw err;
+  }
+}
+export const constructPassResetLink = (userId:string,token:string):string => {
+  try{
+    const urlObject = new URL(env.PASS_RESET_URL);
+    urlObject.searchParams.set('userId',userId);
+    urlObject.searchParams.set('token',token);
+    return urlObject.toString();
+  }catch(err){
+    throw err;
+  }
+}
+export const checkPassResetTokenValidity = async (userId:string,token:string):Promise<boolean>=>{
+  try{
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+    const passTokenEntry = await db.passResetToken.findFirst({
+      where:{userId,token:tokenHash}
+    });
+    if(!passTokenEntry) throw new AppError('Invalid credentials',400);
+    if(passTokenEntry.expiresAt < new Date()) throw new AppError('Invalid session',400);
+    return true;
+  }catch(err){
+    throw err;
+  }
+}
+export const isOldPasswordNewPassword = async (userId:string,newPassword:string):Promise<boolean> => {
+  try{
+    const userData = await db.user.findFirst({
+      where:{id:userId}
+    });
+    if(!userData) throw new AppError('No valid user found',404);
+    const isPasswordSameAsOld = await bcrypt.compare(newPassword,userData.password);
+    return !isPasswordSameAsOld;
+  }catch(err){
+    throw err;
+  }
+}
+export const changePassword = async (id:string,password:string) => {
+  try{
+    const hashedPassword = await bcrypt.hash(password,10);
+    await db.user.update({
+      where:{id},
+      data:{password:hashedPassword}
+    });
+  }catch(err){
+    throw err;
+  }
+}
 const parseDuration = (str: string) => {
   // '7d', '15m', '12h', '3600s' supported
   if (str.endsWith('d')) return Number(str.slice(0, -1)) * 24 * 60 * 60 * 1000;
