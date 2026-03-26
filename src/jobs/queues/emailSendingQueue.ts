@@ -15,7 +15,7 @@ export const initEmailSendingQueue = () => {
     });
 
     emailSendingQueue.on('error',(err)=>{
-        logger.error('[QUEUE INITIATION] failed',{
+        logger.error('[QUEUE INITIALIZATION] failed',{
             type:'email-sending',
             message:err.message,
             stack:err.stack

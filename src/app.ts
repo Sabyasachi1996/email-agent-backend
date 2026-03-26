@@ -57,7 +57,11 @@ app.use(morgan((tokens, req, res) => {
     } 
 }));
 app.use(cookieParser());
-app.use(express.json());
+app.use(express.json({
+    verify:(req,res,buf) => {
+        (req as Request).rawBody = buf;
+    }
+}));
 app.use(express.urlencoded({ extended: true }));
 
 app.use('/api/v1/auth',authRouter);

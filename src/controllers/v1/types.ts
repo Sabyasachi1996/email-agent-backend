@@ -65,3 +65,31 @@ export interface VerifySubscriptionInput {
     razorpay_signature:string;
     internal_subscription_id:string;
 }
+export enum RazorpayWebhookEvent {
+    SUBSCRIPTION_CHARGED = "subscription.charged",
+    SUBSCRIPTION_ACTIVATED = "subscription.activated",
+    SUBSCRIPTION_HALTED = "subscription.halted",
+    SUBSCRIPTION_CANCELLED = "subscription.cancelled"
+}
+export interface RazorpayJobPayload {
+    event: RazorpayWebhookEvent;
+    payload: {
+        subscription: {
+            entity: {
+                id: string; //gateway subscription id of subscription
+                status: string;
+                current_start?: number;
+                current_end?: number;
+            }
+        };
+        payment?: {
+            entity: {
+                id: string; //payment id
+                amount: number; //amount will be in paise
+                currency: string;
+                order_id: string;
+                status: string;
+            }
+        };
+    };
+}

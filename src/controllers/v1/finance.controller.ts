@@ -1,14 +1,13 @@
 import { NextFunction, Request, Response } from "express";
 import AppError from "../../utils/appError.utils";
-import { fetchActiveSubscriptionPlan, fetchAllSubscriptionPlans, fetchSelectedSubscriptionPlan, generateSubscription } from "../../services/finance.service";
-import { CreateSubscriptionInput, VerifySubscriptionInput } from "./types";
+import { fetchActiveSubscriptionPlan, fetchAllSubscriptionPlans, fetchSelectedSubscriptionPlan, generateSubscription, registerNewSubscriptionPlan } from "../../services/finance.service";
+import { CreateSubscriptionInput, RazorpayJobPayload, VerifySubscriptionInput } from "./types";
 import razorpay from "../../config/razorpay";
-import { Subscriptions } from "razorpay/dist/types/subscriptions";
 import { SubscriptionCreationDataset } from "../../services/types";
 import env from "../../config/env";
-import crypto from 'crypto'
-import db from "../../db";
+import crypto from 'crypto';
 import { logger } from "../../config/logger";
+import { getRazorpayWebhookProcessingQueue } from "../../jobs/queues/razorpayWebhookProcessingQueue";
 
 //to get the profile details of a logged in user
 export const getSubscriptionPlans = async (req:Request,res:Response,next:NextFunction)=>{
@@ -102,70 +101,7 @@ export const verifySubscription = async (req:Request,res:Response,next:NextFunct
         .update(`${input.razorpay_payment_id}|${input.razorpay_subscription_id}`)
         .digest("hex");
         if(input.razorpay_signature !== signature) throw new AppError("Signature mismatch",400);
-        const result = await db.$transaction(async(tx)=>{
-            //set an initial value of the rolledOver quota
-            let rolledOverQuota = 0;
-            let lastGatewaySubscriptionId = null;
-           //check if internal subscription id is actually of any valid subscription or not
-           const concernedSubscription = await tx.subscription.findUnique({
-            where:{id:input.internal_subscription_id},
-            include:{plan:true}
-           });
-           if(!concernedSubscription || concernedSubscription.userId !== userId || concernedSubscription.gatewaySubscriptionId !== input.razorpay_subscription_id) throw new AppError("Invalid current subscription, contact authority",400);
-           //find last active plan if any(the one whose is_active is true and also endDate does not pass yet)
-           const lastActiveSubscription = await tx.subscription.findFirst({
-                where:{
-                    isActive:true,
-                    userId,
-                    id: { not: input.internal_subscription_id },
-                    endDate:{gt:new Date()}
-                },
-                orderBy:{
-                    createdAt:"desc"
-                },
-                include:{
-                    plan:true
-                }
-           });
-           //if last active plan present, update the rolled over quota based on that plan's remaining quota
-           if(lastActiveSubscription && lastActiveSubscription.plan.billingInterval !=="TRIAL"){
-                rolledOverQuota = Math.max(0,(lastActiveSubscription.plan.monthlyQuota - lastActiveSubscription.currentUsageCount));
-                lastGatewaySubscriptionId = lastActiveSubscription.gatewaySubscriptionId;                
-           }          
-           //mark all current active subscriptions as is_active false
-           await tx.subscription.updateMany({
-                where:{
-                    userId,
-                    isActive:true
-                },
-                data:{
-                    isActive:false
-                }
-           });
-            //update your last created subscription that you created before going to payment gateway and mark it as is_active=true and adjust the quota too
-            await tx.subscription.update({
-                where:{
-                    id:input.internal_subscription_id
-                },
-                data:{
-                    currentUsageCount:(0 - rolledOverQuota),                    
-                    isActive:true
-                }
-            });
-            //create a payment table entry for the newly created subscription 
-            await tx.payment.create({
-                data:{
-                    userId,
-                    subscriptionId:input.internal_subscription_id,
-                    amount:concernedSubscription.plan.price,
-                    status:"SUCCESS",
-                    gatewayOrderId:input.razorpay_subscription_id,
-                    gatewayPaymentId:input.razorpay_payment_id,
-                    gatewaySignature:input.razorpay_signature
-                }
-            });
-            return lastGatewaySubscriptionId;
-        });
+        const result = await registerNewSubscriptionPlan(input,userId);
         if(result){
            try{
             await razorpay.subscriptions.cancel(result);
@@ -181,6 +117,23 @@ export const verifySubscription = async (req:Request,res:Response,next:NextFunct
             message:"Your plan is active now",
             data:result
         });
+    }catch(err){
+        next(err);
+    }
+}
+export const respondToWebhook = async (req:Request,res:Response,next:NextFunction) => {
+    try{
+        const requestSignature = req.headers["x-razorpay-signature"] as string;
+        const razorpaySecret = env.RAZORPAY_SECRET;
+        const rawBody = req.rawBody;
+        if(!rawBody) throw new AppError("Invalid Request",400);
+        if(!razorpaySecret) throw new AppError("Server Misconfiguration",400);   
+        const payloadSignature = crypto.createHmac("sha256",razorpaySecret).update(rawBody).digest("hex");
+        if(payloadSignature !== requestSignature) throw new AppError("Invalid signature",500);
+        const payloadObject = JSON.parse(rawBody.toString()) as RazorpayJobPayload;
+        const razorpayWebhookProcessingQueue = getRazorpayWebhookProcessingQueue();
+        await razorpayWebhookProcessingQueue.add("razorpay-webhook-processing",payloadObject);
+        return res.status(200).send("OK");       
     }catch(err){
         next(err);
     }

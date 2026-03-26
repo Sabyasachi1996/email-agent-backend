@@ -10,16 +10,16 @@ import { closeEmailProcessorWorker, initEmailProcessorWorker } from './jobs/work
 import { initEmailSendingQueue } from './jobs/queues/emailSendingQueue.js';
 import { initEmailProcessingQueue } from './jobs/queues/emailProcessingQueue.js';
 import { initEmailProcessorSchedular } from './jobs/schedulers/emailProcessorScheduler.js';
+import { initRazorpayWebhookProcessingQueue } from './jobs/queues/razorpayWebhookProcessingQueue.js';
 let SERVER:http.Server;
 const PORT = env.APP_PORT || 3003;
 //server starting function
 const startAPIServer = async ()=>{
     try{        
         //INIT THE BULLMQ INSTANCES
-        initEmailSendingQueue();        
-        //INIT THE BULLMQ WORKERS(ALWAYS AFTER CHECKING THE REDIS CONNECTIVITY)
-        initEmailProcessorWorker();
-        initEmailSenderWorker();
+        initEmailSendingQueue();
+        //razorpay webhook processing queue instance initiation
+        initRazorpayWebhookProcessingQueue();        
         //SERVER INSTANCE CREATION AND STARTING
         SERVER = http.createServer(app);
         SERVER.listen(PORT,()=>{            
@@ -89,7 +89,19 @@ process.on('unhandledRejection',(reason:any)=>{
 process.on('SIGINT',async ()=>await gracefulShutdown('SIGINT'));
 process.on('SIGTERM',async ()=>await gracefulShutdown('SIGTERM'));
 const startSchedulerProcess = () => {
+    //EMAIL PROCESSING BULLMQ INSTANCE CREATION
+    initEmailProcessingQueue();
+    //STARTING THE SCHEDULAR
     initEmailProcessorSchedular();
+    logger.info(`[SCHEDULAR PROCESS] started`);
+}
+const startQueueWorkerProcess = () => {
+    //INIT THE BULLMQ INSTANCES
+    initEmailSendingQueue(); 
+    //INIT THE BULLMQ WORKERS(ALWAYS AFTER CHECKING THE REDIS CONNECTIVITY)
+    initEmailProcessorWorker();
+    initEmailSenderWorker();
+    logger.info(`[QUEUE WORKER PROCESS] started`);
 }
 const bootstrap = async () => {
     try{
@@ -99,14 +111,14 @@ const bootstrap = async () => {
         await checkMailerConnectivity();        
         //REDIS CONNECTION CHECK AND CONNECTION INIT
         await checkRedisConnectivity();
-        initRedisConnection();
-        //EMAIL PROCESSING BULLMQ INSTANCE CREATION
-        initEmailProcessingQueue();
+        initRedisConnection();        
         //DECIDE WHAT TO START BASED ON PROCESS TYPE(API or SCHEDULER)
         if(env.PROCESS_TYPE === "API"){
             await startAPIServer();
         }else if(env.PROCESS_TYPE === "SCHEDULER"){ 
             startSchedulerProcess();
+        }else if(env.PROCESS_TYPE === "WORKER"){ 
+            startQueueWorkerProcess();
         }else{
             throw new Error(`Unknown Process: ${env.PROCESS_TYPE}`);
         }

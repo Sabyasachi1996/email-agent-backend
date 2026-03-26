@@ -29,7 +29,8 @@ const envSchema = z.object({
     MICROSOFT_TENANT_ID:z.string().default(""),
     PROCESS_TYPE:z.string().default(""),
     RAZORPAY_KEY:z.string().default(""),
-    RAZORPAY_SECRET:z.string().default("")
+    RAZORPAY_SECRET:z.string().default(""),
+    FRONTEND_URL:z.string().default("")
 });
 
 const env = envSchema.parse(process.env);

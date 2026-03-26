@@ -32,23 +32,46 @@ export const isEmailUsed = async (email:string):Promise<boolean> => {
 export const createUser = async (name:string,email:string,phone:string|undefined,password:string):Promise<NewCreatedUserWithAccount>=>{
   logger.info('creating user',{email,phone});
   try{
-    const hashedPassword = await bcrypt.hash(password,10);        
-    const newUser = await db.user.create({
-      data:{
-        name,
-        email,
-        password:hashedPassword,
-        phone:phone ?? null        
-      },
-      select:{
-        id:true,
-        name:true,
-        email:true,
-        phone:true,
-        createdAt:true
-      }
-    });
-    logger.info('user created',{email,phone});
+    const trialStartDate = new Date();
+    const trialEndDate = new Date();
+    trialEndDate.setDate(trialStartDate.getDate() + 7);
+    const hashedPassword = await bcrypt.hash(password,10); 
+    const newUser = await db.$transaction(async (tx)=>{
+      const newUser = await tx.user.create({
+        data:{
+          name,
+          email,
+          password:hashedPassword,
+          phone:phone ?? null        
+        },
+        select:{
+          id:true,
+          name:true,
+          email:true,
+          phone:true,
+          createdAt:true
+        }
+      });
+      //find trial plan
+      const trialPlan = await tx.subscriptionPlan.findFirst({
+        where:{
+          billingInterval:"TRIAL"          
+        }
+      });
+      if(!trialPlan) throw new AppError("Invalid trial plan",400);
+      await tx.subscription.create({
+        data:{
+          userId:newUser.id,
+          planId:trialPlan.id,          
+          currentUsageCount:0,
+          startDate:trialStartDate,
+          endDate:trialEndDate,
+          isActive:true
+        }
+      });
+      return newUser;
+    });  
+    logger.info('user created and trial plan added',{email,phone});
     return newUser;
   }catch(err){
     throw err;

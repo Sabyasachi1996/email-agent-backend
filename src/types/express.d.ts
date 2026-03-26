@@ -7,5 +7,6 @@ declare namespace Express {
       email:string;
       phone?:string | null;
     };
+    rawBody?:Buffer<ArrayBufferLike>
   }
 }
