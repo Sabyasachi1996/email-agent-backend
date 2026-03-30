@@ -93,3 +93,10 @@ export interface RazorpayJobPayload {
         };
     };
 }
+export interface UpdateEmailAccountsPriorityInput {
+    updates:PriorityUpdate[]
+};
+export interface PriorityUpdate {
+    id:string;
+    priority:number;
+}

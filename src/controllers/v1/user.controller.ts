@@ -1,7 +1,7 @@
 import { NextFunction, Request, Response } from "express";
 import AppError from "../../utils/appError.utils";
-import { changeProfileAIResponseTone, createCalendarAccFormEmailAcc, createCalendarAccount, createEmailAccount, fetchEmailAccount, fetchUserData, getAccounts, getCalendarAccounts, getUserProfile, toggleCalendarAccountState, toggleEmailAccountStatus, updateProfileAutomationStatus, updateUser } from "../../services/user.service";
-import { ChangeAIResponseToneInput, LinkAccountInput,LinkCalendarAccountInput, ToggleAutomationStatus, UpdateProfileInput } from "./types";
+import { changeProfileAIResponseTone, createCalendarAccFormEmailAcc, createCalendarAccount, createEmailAccount, fetchEmailAccount, fetchUserData, getAccounts, getCalendarAccounts, getUserProfile, toggleCalendarAccountState, toggleEmailAccountStatus, updateEmailAccountPriorityWeight, updateProfileAutomationStatus, updateUser } from "../../services/user.service";
+import { ChangeAIResponseToneInput, LinkAccountInput,LinkCalendarAccountInput, ToggleAutomationStatus, UpdateEmailAccountsPriorityInput, UpdateProfileInput } from "./types";
 import { LinkAccountFactory } from "../../services/link-account/factory";
 import { LinkCalendarAccountFactory } from "../../services/link-calendar-account/factory";
 import { isEmailUsed } from "../../services/auth.service";
@@ -237,6 +237,26 @@ export const toggleAutomationStatus = async (req:Request,res:Response,next:NextF
         return res.status(200).json({
             error:false,
             message:currentAutomationStatus?"automation activated":"automation deactivated"
+        });
+    }catch(err){
+        next(err);
+    }
+}
+//update email accounts priority for a user
+export const updateEmailAccountsPriority = async (req:Request,res:Response,next:NextFunction) => {
+    try{
+        const input  = req.body as UpdateEmailAccountsPriorityInput;
+        const userId = req.user?.id;
+        if(!userId) throw new AppError('Invalid user',400);
+        //check if priority sum is valid or not
+        const totalPriority =input.updates.reduce((counter,each)=>{
+            return counter + each.priority
+        },0);
+        if(totalPriority !== 100) throw new AppError('Invalid Priorities',400);
+        await updateEmailAccountPriorityWeight(input.updates,userId);
+        return res.status(200).json({
+            error:false,
+            message:'Priority updated'
         });
     }catch(err){
         next(err);

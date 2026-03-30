@@ -37,3 +37,15 @@ export const updateProfileValidationRules = [
     .matches(/^\+[1-9]\d{6,14}$/)
     .withMessage('Please provide a valid E.164 phone number (e.g., +1234567890)').bail() 
 ];
+export const updateEmailAccountsPriorityValidationRules = [
+  body('updates')
+    .isArray({min:1})
+    .withMessage('updates must be an array with at least 1 element').bail(),     
+  body('updates.*.id')
+    .notEmpty().withMessage('id is required').bail()
+    .isUUID().withMessage('id should be a valid UUID').bail(),    
+  body('updates.*.priority')
+    .notEmpty().withMessage('priority is required').bail() 
+    .isInt({min:0,max:100}).withMessage('priority needs to be an integer b/w 0 and 100').bail()
+    .toInt(),
+];

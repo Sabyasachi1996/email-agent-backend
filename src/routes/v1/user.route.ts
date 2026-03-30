@@ -1,6 +1,8 @@
 import { Router } from 'express';
-import { getProfile, getUserAccounts, linkAccount,getUserCalendarAccounts,linkCalendarAccount, toggleAccountStatus, toggleCalendarAccountStatus,getServiceStats,updateProfile, getAIResponseTones, changeAIResponseTone, toggleAutomationStatus } from '../../controllers/v1/user.controller.js';
+import { getProfile, getUserAccounts, linkAccount,getUserCalendarAccounts,linkCalendarAccount, toggleAccountStatus, toggleCalendarAccountStatus,getServiceStats,updateProfile, getAIResponseTones, changeAIResponseTone, toggleAutomationStatus, updateEmailAccountsPriority } from '../../controllers/v1/user.controller.js';
 import { authenticate } from '../../middlewares/authentication.js';
+import { updateEmailAccountsPriorityValidationRules } from '../../validators/user.validator.js';
+import { checkRouteValidity } from '../../middlewares/validationMiddleware.js';
 // import { linkAccountValidationRule } from '../../validators/user.validator.js';
 // import { checkRouteValidity } from '../../middlewares/validationMiddleware.js';
 
@@ -30,4 +32,6 @@ userRouter.get('/ai-response-tones',authenticate,getAIResponseTones);
 userRouter.put('/ai-response-tone',authenticate,changeAIResponseTone);
 //toggle Automation
 userRouter.put('/toggle-automation',authenticate,toggleAutomationStatus);
+//changing email account priorities
+userRouter.put('/update-email-accounts-priority',authenticate,updateEmailAccountsPriorityValidationRules,checkRouteValidity,updateEmailAccountsPriority);
 export default userRouter;

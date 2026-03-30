@@ -1,5 +1,6 @@
+import { PriorityUpdate } from "../controllers/v1/types";
 import db from "../db"
-import { AIResponseTone } from "../generated/prisma";
+import { AIResponseTone, Prisma } from "../generated/prisma";
 import AppError from "../utils/appError.utils";
 import { LinkAccountResponse } from "./link-account/types";
 import { LinkCalendarAccountResponse } from "./link-calendar-account/types";
@@ -14,6 +15,7 @@ export const getAccounts = async (userId:string)=> {
                 emailAddress:true,
                 isActive:true,
                 provider:true,
+                priorityWeight:true,
                 createdAt:true
             }
         });
@@ -24,6 +26,7 @@ export const getAccounts = async (userId:string)=> {
                 email:account.emailAddress,
                 isActive:account.isActive,
                 provider:account.provider,
+                priority:account.priorityWeight,
                 createdAt:account.createdAt
             }
         });
@@ -290,6 +293,32 @@ export const fetchUserByEmail = async (email:string):Promise<UserDataByEmail>=> 
         });
         if(!userData) throw new AppError('User not found',404);
         return userData;
+    }catch(err){
+        throw err;
+    }
+}
+
+//update email accounts priority
+export const updateEmailAccountPriorityWeight = async (idWithPriority:PriorityUpdate[],userId:string) => {
+    try{
+        // add this log
+        console.log('idWithPriority:', JSON.stringify(idWithPriority));
+        console.log('priority types:', idWithPriority.map(e => ({ val: e.priority, type: typeof e.priority })));
+        const caseFragments = idWithPriority.map((each)=>{
+            return Prisma.sql`WHEN id=${each.id} THEN ${Number(each.priority)}::int`
+        });
+        const ids = idWithPriority.map((each)=>{
+            return each.id;
+        });
+        await db.$executeRaw`
+        UPDATE email_accounts
+        SET priority_weight = CASE
+        ${Prisma.join(caseFragments,'\n')}
+        END
+        WHERE id IN (${Prisma.join(ids)})
+        AND user_id = ${userId}
+        `;
+        return true;
     }catch(err){
         throw err;
     }
